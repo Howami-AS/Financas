@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#2563eb">
+  <title>Finanças PWA</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <h1>Controle Financeiro</h1>
+    <button id="theme-toggle" aria-label="Alternar tema">🌙</button>
+  </header>
+
+  <main class="content-area">
+    <section id="sec-dashboard" class="view active">
+      <div class="cards-grid">
+        <div class="card shadow">
+          <small>Saldo Atual</small>
+          <h2 id="dash-saldo">R$ 0,00</h2>
+        </div>
+        <div class="card shadow border-green">
+          <small>Entradas (Mês)</small>
+          <h3 id="dash-entradas" class="text-green">R$ 0,00</h3>
+        </div>
+        <div class="card shadow border-red">
+          <small>Saídas (Mês)</small>
+          <h3 id="dash-saidas" class="text-red">R$ 0,00</h3>
+        </div>
+      </div>
+
+      <div class="section-title">Últimos Lançamentos</div>
+      <div id="recent-list" class="transaction-list"></div>
+    </section>
+
+    <section id="sec-transactions" class="view">
+      <div class="filters-bar">
+        <input type="text" id="search-input" placeholder="Buscar por descrição...">
+        <select id="filter-type">
+          <option value="ALL">Todos os Tipos</option>
+          <option value="IN">Entradas</option>
+          <option value="OUT">Saídas</option>
+        </select>
+      </div>
+      <div id="full-list" class="transaction-list"></div>
+    </section>
+
+    <section id="sec-reports" class="view">
+      <div class="section-title">Análise Financeira</div>
+      <div class="chart-container shadow">
+        <canvas id="chart-categories"></canvas>
+      </div>
+      <div class="chart-container shadow">
+        <canvas id="chart-balance"></canvas>
+      </div>
+    </section>
+
+    <section id="sec-settings" class="view">
+      <div class="section-title">Dados e Backup</div>
+      <button class="btn btn-primary" id="btn-export-json">Exportar JSON</button>
+      <button class="btn btn-secondary" id="btn-export-csv">Exportar para Excel</button>
+      
+      <div class="file-input-wrapper">
+        <label for="import-file" class="btn btn-outline">Restaurar Backup (JSON)</label>
+        <input type="file" id="import-file" accept=".json">
+      </div>
+      
+      <button class="btn btn-danger" id="btn-clear-data">Apagar Todos os Dados</button>
+    </section>
+  </main>
+
+  <div id="modal-transaction" class="modal">
+    <div class="modal-content shadow">
+      <span class="close-modal">&times;</span>
+      <h3>Nova Movimentação</h3>
+      <form id="tx-form">
+        <div class="type-selector">
+          <button type="button" class="btn-type active" data-type="OUT">Saída</button>
+          <button type="button" class="btn-type" data-type="IN">Entrada</button>
+        </div>
+        
+        <input type="text" id="tx-desc" placeholder="Descrição" required>
+        <input type="number" id="tx-amount" step="0.01" placeholder="Valor (R$)" required>
+        <input type="date" id="tx-date" required>
+        
+        <select id="tx-category" required>
+          <option value="Alimentação">Alimentação</option>
+          <option value="Transporte">Transporte</option>
+          <option value="Moradia">Moradia</option>
+          <option value="Saúde">Saúde</option>
+          <option value="Lazer">Lazer</option>
+          <option value="Salário">Salário</option>
+          <option value="Freelance">Freelance</option>
+          <option value="Outros">Outros</option>
+        </select>
+
+        <button type="submit" class="btn btn-primary full-width">Salvar Lançamento</button>
+      </form>
+    </div>
+  </div>
+
+  <footer class="app-footer">© Alisson Salvador 2026</footer>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-target="sec-dashboard">
+      <span>🏠</span>
+      <small>Início</small>
+    </button>
+    <button class="nav-item" data-target="sec-transactions">
+      <span>📋</span>
+      <small>Extrato</small>
+    </button>
+    <button class="nav-item nav-add" id="open-modal-btn">
+      <div class="add-circle">+</div>
+    </button>
+    <button class="nav-item" data-target="sec-reports">
+      <span>📊</span>
+      <small>Relatórios</small>
+    </button>
+    <button class="nav-item" data-target="sec-settings">
+      <span>⚙️</span>
+      <small>Ajustes</small>
+    </button>
+  </nav>
+
+  <script src="js/db.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+</body>
+</html>
