@@ -3,20 +3,54 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#2563eb">
-  <title>Finanças PWA</title>
+  <meta name="theme-color" content="#0f172a">
+  <title>Finanças</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
-<body>
+<body data-theme="dark">
   <header class="app-header">
     <h1>Controle Financeiro</h1>
-    <button id="theme-toggle" aria-label="Alternar tema">🌙</button>
   </header>
 
   <main class="content-area">
     <section id="sec-dashboard" class="view active">
+      <div class="section-heading bills-heading">
+        <div>
+          <div class="section-title">Contas a pagar</div>
+          <p class="section-subtitle">Acompanhe seus compromissos para não esquecer nenhum pagamento</p>
+        </div>
+        <strong id="bills-total" class="text-red">R$ 0,00</strong>
+      </div>
+      <form id="bill-form" class="bill-form card shadow">
+        <input type="text" id="bill-desc" placeholder="Descrição da conta" required>
+        <div class="form-row">
+          <input type="number" id="bill-amount" min="0.01" step="0.01" placeholder="Valor (R$)" required>
+          <input type="date" id="bill-date" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Adicionar conta</button>
+      </form>
+      <div id="bills-list" class="transaction-list"></div>
+    </section>
+
+    <section id="sec-transactions" class="view">
+      <div class="section-title">Lançamentos</div>
+      <p class="section-subtitle">Consulte e filtre suas entradas e saídas</p>
+      <div class="filters-bar">
+        <input type="text" id="search-input" placeholder="Buscar por descrição...">
+        <select id="filter-type">
+          <option value="ALL">Todos os Tipos</option>
+          <option value="IN">Entradas</option>
+          <option value="OUT">Saídas</option>
+        </select>
+      </div>
+      <div id="full-list" class="transaction-list"></div>
+    </section>
+
+    <section id="sec-reports" class="view">
+      <div class="section-title">Relatórios</div>
+      <p class="section-subtitle">Resumo financeiro e visão dos seus lançamentos</p>
       <div class="cards-grid">
         <div class="card shadow">
           <small>Saldo Atual</small>
@@ -31,37 +65,24 @@
           <h3 id="dash-saidas" class="text-red">R$ 0,00</h3>
         </div>
       </div>
-
       <div class="section-title">Últimos Lançamentos</div>
       <div id="recent-list" class="transaction-list"></div>
-    </section>
-
-    <section id="sec-transactions" class="view">
-      <div class="filters-bar">
-        <input type="text" id="search-input" placeholder="Buscar por descrição...">
-        <select id="filter-type">
-          <option value="ALL">Todos os Tipos</option>
-          <option value="IN">Entradas</option>
-          <option value="OUT">Saídas</option>
-        </select>
-      </div>
-      <div id="full-list" class="transaction-list"></div>
-    </section>
-
-    <section id="sec-reports" class="view">
-      <div class="section-title">Análise Financeira</div>
       <div class="chart-container shadow">
         <canvas id="chart-categories"></canvas>
       </div>
       <div class="chart-container shadow">
         <canvas id="chart-balance"></canvas>
       </div>
+      <div class="report-export card shadow">
+        <strong>Relatório mensal</strong>
+        <input type="month" id="report-month" aria-label="Mês do relatório">
+        <button class="btn btn-secondary" id="btn-export-pdf">Exportar relatório em PDF</button>
+      </div>
     </section>
 
     <section id="sec-settings" class="view">
       <div class="section-title">Dados e Backup</div>
       <button class="btn btn-primary" id="btn-export-json">Exportar JSON</button>
-      <button class="btn btn-secondary" id="btn-export-csv">Exportar para Excel</button>
       
       <div class="file-input-wrapper">
         <label for="import-file" class="btn btn-outline">Restaurar Backup (JSON)</label>
@@ -69,6 +90,7 @@
       </div>
       
       <button class="btn btn-danger" id="btn-clear-data">Apagar Todos os Dados</button>
+      <button class="btn btn-outline" id="theme-toggle">🌙 Alternar tema</button>
     </section>
   </main>
 
@@ -113,7 +135,7 @@
       <span>📋</span>
       <small>Extrato</small>
     </button>
-    <button class="nav-item nav-add" id="open-modal-btn">
+    <button class="nav-item nav-add" id="open-modal-btn" aria-label="Nova movimentação">
       <div class="add-circle">+</div>
     </button>
     <button class="nav-item" data-target="sec-reports">
@@ -128,6 +150,7 @@
 
   <script src="js/db.js"></script>
   <script src="js/charts.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="js/app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
