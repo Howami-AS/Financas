@@ -1,7 +1,7 @@
 let categoryChartInstance = null;
 let balanceChartInstance = null;
 
-function updateCharts(transactions) {
+function updateCharts(transactions, bills = []) {
   const catCtx = document.getElementById('chart-categories')?.getContext('2d');
   const balCtx = document.getElementById('chart-balance')?.getContext('2d');
   if (!catCtx || !balCtx) return;
@@ -10,6 +10,9 @@ function updateCharts(transactions) {
   const catTotals = {};
   transactions.filter(t => t.type === 'OUT').forEach(t => {
     catTotals[t.category] = (catTotals[t.category] || 0) + Number(t.amount);
+  });
+  bills.forEach(bill => {
+    catTotals['Contas a pagar'] = (catTotals['Contas a pagar'] || 0) + Number(bill.amount);
   });
 
   if (categoryChartInstance) categoryChartInstance.destroy();
@@ -27,7 +30,8 @@ function updateCharts(transactions) {
 
   // Entradas x Saídas Totais
   const inTotal = transactions.filter(t => t.type === 'IN').reduce((a, b) => a + Number(b.amount), 0);
-  const outTotal = transactions.filter(t => t.type === 'OUT').reduce((a, b) => a + Number(b.amount), 0);
+  const outTotal = transactions.filter(t => t.type === 'OUT').reduce((a, b) => a + Number(b.amount), 0) +
+    bills.reduce((total, bill) => total + Number(bill.amount), 0);
 
   if (balanceChartInstance) balanceChartInstance.destroy();
   balanceChartInstance = new Chart(balCtx, {

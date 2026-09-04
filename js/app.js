@@ -2,6 +2,7 @@ let selectedType = 'OUT';
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initDB();
+  document.getElementById('report-month').value = new Date().toISOString().slice(0, 7);
   setupEvents();
   refreshApp();
 });
@@ -29,13 +30,14 @@ function getFilteredTransactions(transactions) {
 
 async function refreshApp() {
   const transactions = await getAllTransactions();
+  const bills = await getAllBills();
   
-  // Atualizar Saldos no Dashboard
   let totalIn = 0, totalOut = 0;
   transactions.forEach(t => {
     if (t.type === 'IN') totalIn += Number(t.amount);
     if (t.type === 'OUT') totalOut += Number(t.amount);
   });
+  totalOut += bills.reduce((total, bill) => total + Number(bill.amount), 0);
 
   document.getElementById('dash-saldo').innerText = formatBRL(totalIn - totalOut);
   document.getElementById('dash-entradas').innerText = formatBRL(totalIn);
@@ -43,7 +45,41 @@ async function refreshApp() {
 
   renderList('recent-list', transactions.slice(-5).reverse());
   renderList('full-list', getFilteredTransactions(transactions).slice().reverse());
-  updateCharts(transactions);
+  renderBills(bills);
+  updateCharts(transactions, bills);
+}
+
+function renderBills(bills) {
+  const container = document.getElementById('bills-list');
+  const pendingBills = bills.filter(bill => !bill.paid);
+  const pendingTotal = pendingBills.reduce((total, bill) => total + Number(bill.amount), 0);
+  document.getElementById('bills-total').innerText = formatBRL(pendingTotal);
+  container.innerHTML = '';
+
+  if (bills.length === 0) {
+    container.innerHTML = '<p style="text-align:center;color:#888;">Nenhuma conta cadastrada.</p>';
+    return;
+  }
+
+  bills.slice().sort((first, second) => first.date.localeCompare(second.date)).forEach(bill => {
+    const div = document.createElement('div');
+    div.className = `bill-item shadow ${bill.paid ? 'is-paid' : ''}`;
+    div.innerHTML = `
+      <label class="bill-check">
+        <input type="checkbox" data-bill-id="${bill.id}" ${bill.paid ? 'checked' : ''}>
+        <span></span>
+      </label>
+      <div class="bill-info">
+        <strong>${bill.description}</strong>
+        <small>Vencimento: ${bill.date}</small>
+      </div>
+      <div class="bill-value">
+        <strong>${formatBRL(bill.amount)}</strong>
+        <button type="button" class="delete-button" data-delete-bill="${bill.id}">Excluir</button>
+      </div>
+    `;
+    container.appendChild(div);
+  });
 }
 
 function renderList(elementId, items) {
@@ -83,11 +119,11 @@ async function handleDelete(id) {
 
 function setupEvents() {
   // Navegação por abas
-  document.querySelectorAll('.nav-item[data-target]').forEach(btn => {
+  document.querySelectorAll('[data-target]').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-      btn.classList.add('active');
+      if (btn.classList.contains('nav-item')) btn.classList.add('active');
       document.getElementById(btn.dataset.target).classList.add('active');
     });
   });
@@ -116,6 +152,36 @@ function setupEvents() {
   if (filterType) {
     filterType.addEventListener('change', refreshApp);
   }
+
+  document.getElementById('bill-form').onsubmit = async (e) => {
+    e.preventDefault();
+    await addBill({
+      description: document.getElementById('bill-desc').value.trim(),
+      amount: parseFloat(document.getElementById('bill-amount').value),
+      date: document.getElementById('bill-date').value,
+      paid: false
+    });
+    e.target.reset();
+    refreshApp();
+  };
+
+  document.getElementById('bills-list').addEventListener('change', async (e) => {
+    if (!e.target.matches('[data-bill-id]')) return;
+    const bills = await getAllBills();
+    const bill = bills.find(item => item.id === Number(e.target.dataset.billId));
+    if (bill) {
+      bill.paid = e.target.checked;
+      await updateBill(bill);
+      refreshApp();
+    }
+  });
+
+  document.getElementById('bills-list').addEventListener('click', async (e) => {
+    const button = e.target.closest('[data-delete-bill]');
+    if (!button || !confirm('Deseja remover esta conta?')) return;
+    await deleteBill(Number(button.dataset.deleteBill));
+    refreshApp();
+  });
 
   // Salvar formulário
   document.getElementById('tx-form').onsubmit = async (e) => {
@@ -149,31 +215,65 @@ function setupEvents() {
     a.click();
   };
 
-  // Exportar CSV
-  document.getElementById('btn-export-csv').onclick = async () => {
-    const transactions = await getAllTransactions();
-    const headers = ['Descrição', 'Valor', 'Data', 'Categoria', 'Tipo'];
-    const rows = transactions.map(t => [
-      `"${String(t.description ?? '').replace(/"/g, '""')}"`,
-      `"${Number(t.amount ?? 0).toFixed(2).replace('.', ',')}"`,
-      `"${String(t.date ?? '').replace(/"/g, '""')}"`,
-      `"${String(t.category ?? '').replace(/"/g, '""')}"`,
-      `"${t.type === 'IN' ? 'Entrada' : 'Saída'}"`
-    ]);
+  // Exportar relatório mensal em PDF
+  document.getElementById('btn-export-pdf').onclick = async () => {
+    const selectedMonth = document.getElementById('report-month').value;
+    if (!selectedMonth) {
+      alert('Selecione o mês do relatório.');
+      return;
+    }
 
-    const csv = ['sep=;', headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
-    const bom = new Uint8Array([0xef, 0xbb, 0xbf]);
-    const blob = new Blob([bom, csv], { type: 'application/vnd.ms-excel;charset=utf-8;' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `financas_export_${new Date().toISOString().slice(0,10)}.xls`;
-    a.click();
+    const [transactions, bills] = await Promise.all([getAllTransactions(), getAllBills()]);
+    const monthTransactions = transactions.filter(item => item.date.startsWith(selectedMonth));
+    const monthBills = bills.filter(item => item.date.startsWith(selectedMonth));
+    const income = monthTransactions.filter(item => item.type === 'IN');
+    const expenses = monthTransactions.filter(item => item.type === 'OUT');
+    const expenseItems = [
+      ...expenses.map(item => ({ ...item, source: 'Lançamento' })),
+      ...monthBills.map(item => ({ ...item, category: 'Conta a pagar', source: item.paid ? 'Conta paga' : 'Conta a pagar' }))
+    ];
+    const totalIncome = income.reduce((sum, item) => sum + Number(item.amount), 0);
+    const totalExpenses = expenseItems.reduce((sum, item) => sum + Number(item.amount), 0);
+    const pdf = new window.jspdf.jsPDF();
+    const monthLabel = new Date(`${selectedMonth}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+    pdf.setFontSize(18);
+    pdf.text('Relatório Financeiro', 14, 18);
+    pdf.setFontSize(11);
+    pdf.text(`Período: ${monthLabel}`, 14, 27);
+    pdf.text(`Entradas: ${formatBRL(totalIncome)}`, 14, 38);
+    pdf.text(`Saídas: ${formatBRL(totalExpenses)}`, 14, 46);
+    pdf.text(`Saldo do mês: ${formatBRL(totalIncome - totalExpenses)}`, 14, 54);
+
+    let y = 66;
+    pdf.setFontSize(10);
+    pdf.text('Data', 14, y);
+    pdf.text('Descrição', 38, y);
+    pdf.text('Categoria / origem', 105, y);
+    pdf.text('Valor', 174, y);
+    y += 7;
+    [...income.map(item => ({ ...item, category: item.category, source: 'Entrada' })), ...expenseItems]
+      .sort((first, second) => first.date.localeCompare(second.date))
+      .forEach(item => {
+        if (y > 280) {
+          pdf.addPage();
+          y = 18;
+        }
+        pdf.text(item.date.split('-').reverse().join('/'), 14, y);
+        pdf.text(String(item.description).slice(0, 34), 38, y);
+        pdf.text(`${item.category} (${item.source})`.slice(0, 34), 105, y);
+        pdf.text(formatBRL(item.amount), 174, y);
+        y += 7;
+      });
+
+    pdf.save(`relatorio_financeiro_${selectedMonth}.pdf`);
   };
 
   // Limpar tudo
   document.getElementById('btn-clear-data').onclick = async () => {
     if (confirm('Atenção: Todos os dados serão apagados permanentemente!')) {
       await clearAllTransactions();
+      await clearAllBills();
       refreshApp();
     }
   };
