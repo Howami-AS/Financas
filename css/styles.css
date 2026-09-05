@@ -37,6 +37,9 @@ body { background: var(--bg); color: var(--text); padding-bottom: 100px; }
 
 .section-title { font-size: 1.1rem; font-weight: bold; margin: 1rem 0 0.5rem 0; }
 .section-heading { display: flex; justify-content: space-between; align-items: end; gap: 1rem; }
+.bills-actions { display: flex; flex-direction: column; align-items: end; gap: 0.35rem; }
+.clear-bills-button { border: 0; background: transparent; color: #64748b; cursor: pointer; font-size: 0.7rem; padding: 0; }
+.clear-bills-button:hover { color: var(--red); }
 .section-subtitle { color: #64748b; font-size: 0.85rem; margin-bottom: 0.75rem; }
 .transaction-list { display: flex; flex-direction: column; gap: 0.5rem; }
 .tx-item { background: var(--surface); padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
@@ -45,12 +48,15 @@ body { background: var(--bg); color: var(--text); padding-bottom: 100px; }
 .bill-item { background: var(--surface); padding: 0.85rem 1rem; border-radius: 8px; border: 1px solid var(--border); display: flex; align-items: center; gap: 0.75rem; }
 .bill-check input { position: absolute; opacity: 0; }
 .bill-check span { display: block; width: 22px; height: 22px; border: 2px solid var(--primary); border-radius: 5px; cursor: pointer; }
+.bill-check input:disabled + span { cursor: not-allowed; opacity: 0.8; }
 .bill-check input:checked + span { background: var(--green); border-color: var(--green); box-shadow: inset 0 0 0 4px var(--surface); }
 .bill-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.25rem; }
 .bill-info small { color: #64748b; }
 .bill-value { text-align: right; display: flex; flex-direction: column; align-items: end; gap: 0.25rem; }
 .bill-value strong { color: var(--red); }
 .is-paid .bill-info, .is-paid .bill-value strong { text-decoration: line-through; opacity: 0.55; }
+.bill-pin { border: 0; background: transparent; color: #94a3b8; cursor: pointer; font-size: 1rem; line-height: 1; padding: 0.2rem; }
+.bill-pin.is-pinned { color: var(--primary); }
 .delete-button { border: 0; background: transparent; color: #64748b; cursor: pointer; font-size: 0.75rem; }
 
 .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: var(--surface); display: flex; justify-content: space-around; align-items: center; border-top: 1px solid var(--border); }
