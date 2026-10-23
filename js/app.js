@@ -368,7 +368,8 @@ function setupEvents() {
       if (!transactions.every(item => item && typeof item.description === 'string' && validAmount(item.amount) && validDate(item.date) && ['IN', 'OUT'].includes(item.type))) {
         throw new Error('Lançamentos inválidos');
       }
-      if (!bills.every(item => item && typeof item.description === 'string' && validAmount(item.amount) && validDate(item.date))) {
+      if (!bills.every(item => item && typeof item.description === 'string' && validAmount(item.amount) && validDate(item.date) &&
+        (!item.payments || (Array.isArray(item.payments) && item.payments.every(payment => payment && validDate(String(payment.paidAt || '').slice(0, 10)) && validAmount(payment.amount)))))) {
         throw new Error('Contas inválidas');
       }
       if (!confirm('Restaurar este backup substituirá os dados atuais. Deseja continuar?')) return;
