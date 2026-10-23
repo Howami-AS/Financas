@@ -2,7 +2,8 @@ let selectedType = 'OUT';
 
 document.addEventListener('DOMContentLoaded', async () => {
   await initDB();
-  document.getElementById('report-month').value = new Date().toISOString().slice(0, 7);
+  const now = new Date();
+  document.getElementById('report-month').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   setupEvents();
   refreshApp();
 });
@@ -20,10 +21,27 @@ async function renewExpiredPinnedBills(bills) {
     now - new Date(bill.paidAt).getTime() >= BILL_RENEWAL_MS);
 
   await Promise.all(expiredBills.map(bill => {
+    bill.payments = Array.isArray(bill.payments) ? bill.payments : [];
+    if (!bill.payments.some(payment => payment.paidAt === bill.paidAt)) {
+      bill.payments.push({ paidAt: bill.paidAt, amount: Number(bill.amount) });
+    }
     bill.paid = false;
     bill.paidAt = null;
     return updateBill(bill);
   }));
+}
+
+function getBillPayments(bill) {
+  const payments = Array.isArray(bill.payments) ? bill.payments.slice() : [];
+  if (bill.paid && bill.paidAt && !payments.some(payment => payment.paidAt === bill.paidAt)) {
+    payments.push({ paidAt: bill.paidAt, amount: Number(bill.amount) });
+  }
+  return payments;
+}
+
+function paymentMonth(payment, bill) {
+  const date = payment.paidAt || bill.date;
+  return typeof date === 'string' ? date.slice(0, 7) : '';
 }
 
 function getFilteredTransactions(transactions) {
@@ -48,31 +66,39 @@ async function refreshApp() {
   const bills = await getAllBills();
   await renewExpiredPinnedBills(bills);
   
-  let totalIn = 0, totalOut = 0;
-  transactions.forEach(t => {
-    if (t.type === 'IN') totalIn += Number(t.amount);
-    if (t.type === 'OUT') totalOut += Number(t.amount);
-  });
-  totalOut += bills
-    .filter(bill => bill.paid)
-    .reduce((total, bill) => total + Number(bill.amount), 0);
+  const selectedMonth = document.getElementById('report-month').value;
+  const monthlyTransactions = transactions.filter(item => !selectedMonth || item.date.startsWith(selectedMonth));
+  const monthlyPayments = bills.flatMap(bill => getBillPayments(bill)
+    .filter(payment => !selectedMonth || paymentMonth(payment, bill) === selectedMonth)
+    .map(payment => ({ ...payment, bill })));
+  const totalIn = transactions.filter(item => item.type === 'IN')
+    .reduce((total, item) => total + Number(item.amount), 0);
+  const totalOut = transactions.filter(item => item.type === 'OUT')
+    .reduce((total, item) => total + Number(item.amount), 0) +
+    bills.flatMap(getBillPayments).reduce((total, payment) => total + Number(payment.amount), 0);
+  const monthlyIn = monthlyTransactions.filter(item => item.type === 'IN')
+    .reduce((total, item) => total + Number(item.amount), 0);
+  const monthlyOut = monthlyTransactions.filter(item => item.type === 'OUT')
+    .reduce((total, item) => total + Number(item.amount), 0) +
+    monthlyPayments.reduce((total, payment) => total + Number(payment.amount), 0);
 
   document.getElementById('dash-saldo').innerText = formatBRL(totalIn - totalOut);
-  document.getElementById('dash-entradas').innerText = formatBRL(totalIn);
-  document.getElementById('dash-saidas').innerText = formatBRL(totalOut);
+  document.getElementById('dash-entradas').innerText = formatBRL(monthlyIn);
+  document.getElementById('dash-saidas').innerText = formatBRL(monthlyOut);
 
-  renderList('recent-list', transactions.slice(-5).reverse());
-  renderList('full-list', getFilteredTransactions(transactions).slice().reverse());
-  renderPaidBills(bills, document.getElementById('report-month').value);
+  renderList('recent-list', transactions.slice().sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5));
+  renderList('full-list', getFilteredTransactions(transactions).slice().sort((a, b) => b.date.localeCompare(a.date)));
+  renderPaidBills(bills, selectedMonth);
   renderBills(bills);
-  updateCharts(transactions, bills);
+  updateCharts(transactions, bills, selectedMonth);
 }
 
 function renderPaidBills(bills, selectedMonth) {
   const container = document.getElementById('paid-bills-list');
-  const paidBills = bills
-    .filter(bill => bill.paid && (!selectedMonth || bill.date.startsWith(selectedMonth)))
-    .sort((first, second) => second.date.localeCompare(first.date));
+  const paidBills = bills.flatMap(bill => getBillPayments(bill)
+    .filter(payment => !selectedMonth || paymentMonth(payment, bill) === selectedMonth)
+    .map(payment => ({ ...bill, paymentDate: payment.paidAt || bill.date, paymentAmount: payment.amount })))
+    .sort((first, second) => second.paymentDate.localeCompare(first.paymentDate));
 
   container.innerHTML = '';
   if (paidBills.length === 0) {
@@ -83,13 +109,16 @@ function renderPaidBills(bills, selectedMonth) {
   paidBills.forEach(bill => {
     const div = document.createElement('div');
     div.className = 'tx-item shadow';
-    div.innerHTML = `
-      <div>
-        <strong>${bill.description}</strong>
-        <br><small>${bill.category || 'Outros'} • ${bill.date} • Conta paga</small>
-      </div>
-      <strong class="text-red">- ${formatBRL(bill.amount)}</strong>
-    `;
+    const info = document.createElement('div');
+    const description = document.createElement('strong');
+    description.textContent = bill.description;
+    const detail = document.createElement('small');
+    detail.textContent = `${bill.category || 'Outros'} • ${bill.paymentDate} • Conta paga`;
+    info.append(description, document.createElement('br'), detail);
+    const amount = document.createElement('strong');
+    amount.className = 'text-red';
+    amount.textContent = `- ${formatBRL(bill.paymentAmount)}`;
+    div.append(info, amount);
     container.appendChild(div);
   });
 }
@@ -109,21 +138,42 @@ function renderBills(bills) {
   bills.slice().sort((first, second) => first.date.localeCompare(second.date)).forEach(bill => {
     const div = document.createElement('div');
     div.className = `bill-item shadow ${bill.paid ? 'is-paid' : ''}`;
-    div.innerHTML = `
-      <label class="bill-check">
-        <input type="checkbox" data-bill-id="${bill.id}" ${bill.paid ? 'checked disabled' : ''} title="${bill.paid ? 'Conta já marcada como paga' : 'Marcar como paga'}">
-        <span></span>
-      </label>
-      <div class="bill-info">
-        <strong>${bill.description}</strong>
-        <small>${bill.category || 'Outros'} • Vencimento: ${bill.date}</small>
-      </div>
-      <div class="bill-value">
-        <strong>${formatBRL(bill.amount)}</strong>
-        <button type="button" class="bill-pin ${bill.pinned ? 'is-pinned' : ''}" data-pin-bill="${bill.id}" aria-label="${bill.pinned ? 'Desafixar' : 'Fixar'} conta" title="${bill.pinned ? 'Desafixar conta' : 'Fixar conta'}">${bill.pinned ? '📌' : '○'}</button>
-        <button type="button" class="delete-button" data-delete-bill="${bill.id}">Excluir</button>
-      </div>
-    `;
+    const label = document.createElement('label');
+    label.className = 'bill-check';
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.dataset.billId = bill.id;
+    checkbox.checked = Boolean(bill.paid);
+    checkbox.disabled = Boolean(bill.paid);
+    checkbox.title = bill.paid ? 'Conta já marcada como paga' : 'Marcar como paga';
+    label.append(checkbox, document.createElement('span'));
+
+    const info = document.createElement('div');
+    info.className = 'bill-info';
+    const description = document.createElement('strong');
+    description.textContent = bill.description;
+    const detail = document.createElement('small');
+    detail.textContent = `${bill.category || 'Outros'} • Vencimento: ${bill.date}`;
+    info.append(description, detail);
+
+    const value = document.createElement('div');
+    value.className = 'bill-value';
+    const amount = document.createElement('strong');
+    amount.textContent = formatBRL(bill.amount);
+    const pin = document.createElement('button');
+    pin.type = 'button';
+    pin.className = `bill-pin ${bill.pinned ? 'is-pinned' : ''}`;
+    pin.dataset.pinBill = bill.id;
+    pin.setAttribute('aria-label', bill.pinned ? 'Desafixar conta' : 'Fixar conta');
+    pin.title = bill.pinned ? 'Desafixar conta' : 'Fixar conta';
+    pin.textContent = bill.pinned ? '📌' : '○';
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'delete-button';
+    remove.dataset.deleteBill = bill.id;
+    remove.textContent = 'Excluir';
+    value.append(amount, pin, remove);
+    div.append(label, info, value);
     container.appendChild(div);
   });
 }
@@ -140,18 +190,28 @@ function renderList(elementId, items) {
   items.forEach(t => {
     const div = document.createElement('div');
     div.className = 'tx-item shadow';
-    div.innerHTML = `
-      <div>
-        <strong>${t.description}</strong>
-        <br><small>${t.category} • ${t.date}</small>
-      </div>
-      <div style="text-align:right">
-        <span class="${t.type === 'IN' ? 'text-green' : 'text-red'}" style="font-weight:bold;">
-          ${t.type === 'IN' ? '+' : '-'} ${formatBRL(t.amount)}
-        </span>
-        <br><button onclick="handleDelete(${t.id})" style="border:none;background:none;color:gray;cursor:pointer;"><small>Excluir</small></button>
-      </div>
-    `;
+    const info = document.createElement('div');
+    const description = document.createElement('strong');
+    description.textContent = t.description;
+    const detail = document.createElement('small');
+    detail.textContent = `${t.category || 'Outros'} • ${t.date}`;
+    info.append(description, document.createElement('br'), detail);
+
+    const actions = document.createElement('div');
+    actions.style.textAlign = 'right';
+    const amount = document.createElement('span');
+    amount.className = t.type === 'IN' ? 'text-green' : 'text-red';
+    amount.style.fontWeight = 'bold';
+    amount.textContent = `${t.type === 'IN' ? '+' : '-'} ${formatBRL(t.amount)}`;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.style.cssText = 'border:none;background:none;color:gray;cursor:pointer;';
+    remove.addEventListener('click', () => handleDelete(t.id));
+    const removeLabel = document.createElement('small');
+    removeLabel.textContent = 'Excluir';
+    remove.appendChild(removeLabel);
+    actions.append(amount, document.createElement('br'), remove);
+    div.append(info, actions);
     container.appendChild(div);
   });
 }
@@ -199,10 +259,7 @@ function setupEvents() {
     filterType.addEventListener('change', refreshApp);
   }
 
-  document.getElementById('report-month').addEventListener('change', async (e) => {
-    const bills = await getAllBills();
-    renderPaidBills(bills, e.target.value);
-  });
+  document.getElementById('report-month').addEventListener('change', refreshApp);
 
   document.getElementById('bill-form').onsubmit = async (e) => {
     e.preventDefault();
@@ -227,6 +284,10 @@ function setupEvents() {
       if (bill.paid && !e.target.checked) return;
       bill.paid = e.target.checked;
       bill.paidAt = bill.paid ? new Date().toISOString() : null;
+      if (bill.paid) {
+        bill.payments = Array.isArray(bill.payments) ? bill.payments : [];
+        bill.payments.push({ paidAt: bill.paidAt, amount: Number(bill.amount) });
+      }
       await updateBill(bill);
       refreshApp();
     }
@@ -285,13 +346,42 @@ function setupEvents() {
 
   // Exportar Backup JSON
   document.getElementById('btn-export-json').onclick = async () => {
-    const data = await getAllTransactions();
+    const [transactions, bills] = await Promise.all([getAllTransactions(), getAllBills()]);
+    const data = { format: 'financas-backup', version: 1, exportedAt: new Date().toISOString(), transactions, bills };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `financas_backup_${new Date().toISOString().slice(0,10)}.json`;
     a.click();
   };
+
+  document.getElementById('import-file').addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const backup = JSON.parse(await file.text());
+      const transactions = Array.isArray(backup) ? backup : backup.transactions;
+      const bills = Array.isArray(backup.bills) ? backup.bills : [];
+      if (!Array.isArray(transactions) || !Array.isArray(bills)) throw new Error('Estrutura inválida');
+      const validDate = value => typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+      const validAmount = value => Number.isFinite(Number(value)) && Number(value) > 0;
+      if (!transactions.every(item => item && typeof item.description === 'string' && validAmount(item.amount) && validDate(item.date) && ['IN', 'OUT'].includes(item.type))) {
+        throw new Error('Lançamentos inválidos');
+      }
+      if (!bills.every(item => item && typeof item.description === 'string' && validAmount(item.amount) && validDate(item.date) &&
+        (!item.payments || (Array.isArray(item.payments) && item.payments.every(payment => payment && validDate(String(payment.paidAt || '').slice(0, 10)) && validAmount(payment.amount)))))) {
+        throw new Error('Contas inválidas');
+      }
+      if (!confirm('Restaurar este backup substituirá os dados atuais. Deseja continuar?')) return;
+      await replaceAllData({ transactions, bills });
+      await refreshApp();
+      alert('Backup restaurado com sucesso.');
+    } catch (error) {
+      alert('Não foi possível restaurar o backup. Verifique o arquivo JSON.');
+    } finally {
+      e.target.value = '';
+    }
+  });
 
   // Exportar relatório mensal em PDF
   document.getElementById('btn-export-pdf').onclick = async () => {
@@ -303,14 +393,14 @@ function setupEvents() {
 
     const [transactions, bills] = await Promise.all([getAllTransactions(), getAllBills()]);
     const monthTransactions = transactions.filter(item => item.date.startsWith(selectedMonth));
-    const monthBills = bills.filter(item => item.date.startsWith(selectedMonth));
     const income = monthTransactions.filter(item => item.type === 'IN');
     const expenses = monthTransactions.filter(item => item.type === 'OUT');
+    const paidPayments = bills.flatMap(bill => getBillPayments(bill)
+      .filter(payment => paymentMonth(payment, bill) === selectedMonth)
+      .map(payment => ({ ...bill, ...payment, date: payment.paidAt || bill.date })));
     const expenseItems = [
       ...expenses.map(item => ({ ...item, source: 'Lançamento' })),
-      ...monthBills
-        .filter(item => item.paid)
-        .map(item => ({ ...item, category: item.category || 'Outros', source: 'Conta paga' }))
+      ...paidPayments.map(item => ({ ...item, category: item.category || 'Outros', source: 'Conta paga' }))
     ];
     const totalIncome = income.reduce((sum, item) => sum + Number(item.amount), 0);
     const totalExpenses = expenseItems.reduce((sum, item) => sum + Number(item.amount), 0);

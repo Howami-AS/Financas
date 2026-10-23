@@ -113,3 +113,18 @@ function clearAllBills() {
     req.onerror = () => reject(req.error);
   });
 }
+
+function replaceAllData(data) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(['transactions', 'bills'], 'readwrite');
+    const transactions = tx.objectStore('transactions');
+    const bills = tx.objectStore('bills');
+    transactions.clear();
+    bills.clear();
+    data.transactions.forEach(item => transactions.add(item));
+    data.bills.forEach(item => bills.add(item));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('A restauração foi cancelada.'));
+  });
+}
