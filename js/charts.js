@@ -56,6 +56,6 @@ function updateCharts(transactions, bills = [], selectedMonth = '') {
         backgroundColor: ['#16a34a', '#dc2626']
       }]
     },
-    options: { responsive: true, plugins: { title: { display: true, text: 'Comparativo Geral' } } }
+    options: { responsive: true, plugins: { title: { display: true, text: selectedMonth ? 'Comparativo do Mês' : 'Comparativo Geral' } } }
   });
 }
