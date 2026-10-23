@@ -1,19 +1,30 @@
 let categoryChartInstance = null;
 let balanceChartInstance = null;
 
-function updateCharts(transactions, bills = []) {
+function updateCharts(transactions, bills = [], selectedMonth = '') {
   const catCtx = document.getElementById('chart-categories')?.getContext('2d');
   const balCtx = document.getElementById('chart-balance')?.getContext('2d');
   if (!catCtx || !balCtx) return;
 
-  // Agrupar por Categoria (Apenas Saídas)
-  const catTotals = {};
-  transactions.filter(t => t.type === 'OUT').forEach(t => {
-    catTotals[t.category] = (catTotals[t.category] || 0) + Number(t.amount);
+  const inPeriod = item => !selectedMonth || item.date.startsWith(selectedMonth);
+  const payments = bills.flatMap(bill => {
+    const history = Array.isArray(bill.payments) ? bill.payments.slice() : [];
+    if (bill.paid && bill.paidAt && !history.some(payment => payment.paidAt === bill.paidAt)) {
+      history.push({ paidAt: bill.paidAt, amount: Number(bill.amount) });
+    }
+    return history
+      .filter(payment => !selectedMonth || (payment.paidAt || bill.date).startsWith(selectedMonth))
+      .map(payment => ({ ...payment, category: bill.category || 'Outros' }));
   });
-  bills.filter(bill => bill.paid).forEach(bill => {
-    const category = bill.category || 'Outros';
-    catTotals[category] = (catTotals[category] || 0) + Number(bill.amount);
+
+  // Agrupar saídas por categoria no período selecionado
+  const catTotals = {};
+  transactions.filter(t => t.type === 'OUT' && inPeriod(t)).forEach(t => {
+    const category = t.category || 'Outros';
+    catTotals[category] = (catTotals[category] || 0) + Number(t.amount);
+  });
+  payments.forEach(payment => {
+    catTotals[payment.category] = (catTotals[payment.category] || 0) + Number(payment.amount);
   });
 
   if (categoryChartInstance) categoryChartInstance.destroy();
@@ -30,9 +41,9 @@ function updateCharts(transactions, bills = []) {
   });
 
   // Entradas x Saídas Totais
-  const inTotal = transactions.filter(t => t.type === 'IN').reduce((a, b) => a + Number(b.amount), 0);
-  const outTotal = transactions.filter(t => t.type === 'OUT').reduce((a, b) => a + Number(b.amount), 0) +
-    bills.filter(bill => bill.paid).reduce((total, bill) => total + Number(bill.amount), 0);
+  const inTotal = transactions.filter(t => t.type === 'IN' && inPeriod(t)).reduce((a, b) => a + Number(b.amount), 0);
+  const outTotal = transactions.filter(t => t.type === 'OUT' && inPeriod(t)).reduce((a, b) => a + Number(b.amount), 0) +
+    payments.reduce((total, payment) => total + Number(payment.amount), 0);
 
   if (balanceChartInstance) balanceChartInstance.destroy();
   balanceChartInstance = new Chart(balCtx, {
